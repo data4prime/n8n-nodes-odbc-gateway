@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-odbc-gateway",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "n8n community node per eseguire query SQL su RDBMS multipli (PostgreSQL, MySQL, SQL Server, Oracle, IBM i) tramite l'API Gateway ODBC/JDBC",
   "keywords": [
     "n8n-community-node-package",
