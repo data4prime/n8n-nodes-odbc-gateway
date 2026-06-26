@@ -1,0 +1,59 @@
+{
+  "name": "n8n-nodes-odbc-gateway",
+  "version": "0.1.0",
+  "description": "n8n community node per eseguire query SQL su RDBMS multipli (PostgreSQL, MySQL, SQL Server, Oracle, IBM i) tramite l'API Gateway ODBC/JDBC",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "odbc",
+    "jdbc",
+    "sql",
+    "database",
+    "gateway"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/data4prime/n8n-nodes-odbc-gateway",
+  "author": {
+    "name": "Data4Prime"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/data4prime/n8n-nodes-odbc-gateway.git"
+  },
+  "engines": {
+    "node": ">=18.10"
+  },
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc && gulp build:icons",
+    "dev": "tsc --watch",
+    "format": "prettier nodes credentials --write",
+    "lint": "eslint nodes credentials package.json",
+    "lintfix": "eslint nodes credentials package.json --fix",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/OdbcGatewayApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/OdbcGateway/OdbcGateway.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-n8n-nodes-base": "^1.16.3",
+    "gulp": "^5.0.0",
+    "n8n-workflow": "*",
+    "prettier": "^3.3.3",
+    "typescript": "^5.5.4"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}

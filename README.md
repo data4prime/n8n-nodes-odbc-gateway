@@ -1,0 +1,63 @@
+# n8n-nodes-odbc-gateway
+
+Community node n8n per eseguire query SQL su **RDBMS multipli** (PostgreSQL, MySQL/MariaDB,
+SQL Server, Oracle, IBM i / Db2 for i) tramite l'**API Gateway ODBC/JDBC**.
+
+Sostituisce il pattern "HTTP Request + Code per splittare le righe": il nodo chiama il gateway,
+gestisce l'autenticazione e restituisce **un item per record** con i campi nominati.
+
+## Installazione
+
+In n8n: **Settings → Community Nodes → Install** → `n8n-nodes-odbc-gateway`
+(richiede `N8N_COMMUNITY_PACKAGES_ENABLED=true`).
+
+## Credenziali — *ODBC/JDBC Gateway API*
+
+| Campo     | Default                          | Note                                            |
+|-----------|----------------------------------|-------------------------------------------------|
+| Base URL  | `http://host.docker.internal:8000` | Da n8n in Docker usa `host.docker.internal`     |
+| API Key   | —                                | Inviata nell'header `X-API-Key`                 |
+
+Il pulsante **Test** verifica le credenziali su `GET /health`.
+
+## Operazioni
+
+### Query
+- **Execute Query** — esegue una SELECT. Output: **un item per record** (campi = colonne).
+  Disattiva *Split Rows Into Items* per ottenere la risposta grezza (`columns`/`rows`/`row_count`).
+- **Execute Statement** — INSERT/UPDATE/DELETE/DDL. Output: `{ affected_rows, elapsed_ms }`.
+
+Campi: **Connection** (dropdown popolato da `GET /connections`), **SQL**, e in *Options*
+**Parameters** (array JSON per i placeholder `?`) e **Max Rows**.
+
+### Connection
+- **List** — elenca le connessioni configurate (un item per connessione).
+
+### System
+- **Health** — stato del gateway.
+
+## Esempio
+Execute Query su `test_SQLServer` con `SELECT * FROM dbo.Customers` → N item, ciascuno
+`{ CustomerCode, CustomerDescription }`.
+
+## Sviluppo
+
+```bash
+npm install
+npm run build      # tsc + copia icone in dist/
+npm run lint       # lint community node
+```
+
+Test locale con n8n in Docker: monta una cartella host come `~/.n8n/custom` nel container e
+`npm link` il pacchetto buildato, oppure `npm pack` e installa il tarball.
+
+## Pubblicazione (npm pubblico)
+
+```bash
+npm login
+npm version patch
+npm publish --access public
+```
+
+## Licenza
+MIT
