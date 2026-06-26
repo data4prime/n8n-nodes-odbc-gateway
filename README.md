@@ -53,10 +53,24 @@ Test locale con n8n in Docker: monta una cartella host come `~/.n8n/custom` nel 
 
 ## Pubblicazione (npm pubblico)
 
+### Manuale
 ```bash
 npm login
 npm version patch
 npm publish --access public
+```
+
+### Automatica (GitHub Actions)
+Il workflow `.github/workflows/publish.yml` pubblica su npm a ogni tag `vX.Y.Z`
+(verifica che il tag combaci con la versione in `package.json`).
+
+Prerequisito una tantum: aggiungere il secret **`NPM_TOKEN`** nel repo
+(Settings → Secrets and variables → Actions) con un **Automation token** npm.
+
+Release:
+```bash
+npm version patch          # crea il commit + tag vX.Y.Z
+git push --follow-tags     # il push del tag avvia la pubblicazione
 ```
 
 ## Licenza
