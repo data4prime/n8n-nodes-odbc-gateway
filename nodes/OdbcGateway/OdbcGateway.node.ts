@@ -282,14 +282,12 @@ export class OdbcGateway implements INodeType {
 				if (resource === 'connection' && operation === 'listTables') {
 					const conn = this.getNodeParameter('tablesConnection', i) as string;
 					const opts = this.getNodeParameter('tablesOptions', i, {}) as IDataObject;
-					const qs = new URLSearchParams();
-					if (opts.schema) qs.set('schema', String(opts.schema));
-					if (opts.catalog) qs.set('catalog', String(opts.catalog));
-					if (opts.types) qs.set('types', String(opts.types));
-					const query = qs.toString();
-					const endpoint = `/connections/${encodeURIComponent(conn)}/tables${
-						query ? `?${query}` : ''
-					}`;
+					const qs: string[] = [];
+					if (opts.schema) qs.push(`schema=${encodeURIComponent(String(opts.schema))}`);
+					if (opts.catalog) qs.push(`catalog=${encodeURIComponent(String(opts.catalog))}`);
+					if (opts.types) qs.push(`types=${encodeURIComponent(String(opts.types))}`);
+					const query = qs.length ? `?${qs.join('&')}` : '';
+					const endpoint = `/connections/${encodeURIComponent(conn)}/tables${query}`;
 					const res = (await gatewayRequest(this, 'GET', endpoint)) as IDataObject;
 					const tables = (res.tables as IDataObject[]) ?? [];
 					for (const t of tables) {
