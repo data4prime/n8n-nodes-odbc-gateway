@@ -116,8 +116,57 @@ export class OdbcGateway implements INodeType {
 						action: 'Elenca le connessioni configurate',
 						description: 'Restituisce le connessioni preconfigurate nel gateway',
 					},
+					{
+						name: 'List Tables',
+						value: 'listTables',
+						action: 'Elenca le tabelle di un DB',
+						description: 'Elenca tabelle e viste del DB di una connessione (un item per tabella)',
+					},
 				],
 				default: 'list',
+			},
+			// --- Parametri: Connection > List Tables ---
+			{
+				displayName: 'Connection Name or ID',
+				name: 'tablesConnection',
+				type: 'options',
+				typeOptions: { loadOptionsMethod: 'getConnections' },
+				required: true,
+				default: '',
+				description:
+					'Connessione di cui elencare le tabelle. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+				displayOptions: { show: { resource: ['connection'], operation: ['listTables'] } },
+			},
+			{
+				displayName: 'Options',
+				name: 'tablesOptions',
+				type: 'collection',
+				placeholder: 'Add option',
+				default: {},
+				displayOptions: { show: { resource: ['connection'], operation: ['listTables'] } },
+				options: [
+					{
+						displayName: 'Schema',
+						name: 'schema',
+						type: 'string',
+						default: '',
+						description: 'Filtra per schema (es. dbo, public)',
+					},
+					{
+						displayName: 'Catalog',
+						name: 'catalog',
+						type: 'string',
+						default: '',
+						description: 'Filtra per catalog/database',
+					},
+					{
+						displayName: 'Types',
+						name: 'types',
+						type: 'string',
+						default: 'TABLE,VIEW',
+						description: "Tipi separati da virgola (es. TABLE,VIEW). Usa '*' per tutti",
+					},
+				],
 			},
 			// --- Operazioni: System ---
 			{
@@ -226,6 +275,25 @@ export class OdbcGateway implements INodeType {
 					const list = Array.isArray(res) ? (res as IDataObject[]) : [];
 					for (const conn of list) {
 						returnData.push({ json: conn, pairedItem: { item: i } });
+					}
+					continue;
+				}
+
+				if (resource === 'connection' && operation === 'listTables') {
+					const conn = this.getNodeParameter('tablesConnection', i) as string;
+					const opts = this.getNodeParameter('tablesOptions', i, {}) as IDataObject;
+					const qs = new URLSearchParams();
+					if (opts.schema) qs.set('schema', String(opts.schema));
+					if (opts.catalog) qs.set('catalog', String(opts.catalog));
+					if (opts.types) qs.set('types', String(opts.types));
+					const query = qs.toString();
+					const endpoint = `/connections/${encodeURIComponent(conn)}/tables${
+						query ? `?${query}` : ''
+					}`;
+					const res = (await gatewayRequest(this, 'GET', endpoint)) as IDataObject;
+					const tables = (res.tables as IDataObject[]) ?? [];
+					for (const t of tables) {
+						returnData.push({ json: t, pairedItem: { item: i } });
 					}
 					continue;
 				}

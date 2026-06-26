@@ -32,6 +32,8 @@ Campi: **Connection** (dropdown popolato da `GET /connections`), **SQL**, e in *
 
 ### Connection
 - **List** — elenca le connessioni configurate (un item per connessione).
+- **List Tables** — elenca tabelle e viste del DB di una connessione (un item per tabella).
+  Opzioni: *Schema*, *Catalog*, *Types* (default `TABLE,VIEW`, `*` per tutti).
 
 ### System
 - **Health** — stato del gateway.
