@@ -28,12 +28,16 @@ costruito dal nodo per il dialetto della connessione, con valori sempre parametr
 
 - **Select** — *Output Columns* (vuoto = tutte), *Conditions (WHERE)* (colonna/operatore/valore,
   combine AND/OR), *Sort*, *Return All*/*Limit*. Output: un item per riga.
-- **Upsert** — *Match Columns* (chiavi) + *Values to Send* (colonna/valore). Genera l'upsert del
-  dialetto: Postgres `ON CONFLICT`, MySQL `ON DUPLICATE KEY`, SQL Server/Oracle/Db2i `MERGE`.
+- **Upsert** — *Match Columns* (chiavi) + *Values to Send* (colonna/valore). Strategia **portabile**:
+  fa una SELECT sulle match columns e poi esegue INSERT (se assente) o UPDATE (se presente).
+  Usa solo SQL standard → funziona su **qualsiasi dialetto**, senza dipendere da `MERGE`/`ON CONFLICT`.
+  L'output indica l'azione effettuata (`inserted` / `updated`).
 - **Delete** — *Conditions (WHERE)*; se nessuna condizione richiede il flag *Delete All Rows*.
 
-> Dialetti verificati live: **Postgres** e **SQL Server**. MySQL/Oracle/Db2i sono implementati
-> ma non ancora testati su DB reale.
+> **Upsert — note**: non è atomico (SELECT e write sono statement separati). Le *Match Columns*
+> dovrebbero corrispondere a una **chiave unica**; in caso di race SELECT→INSERT il nodo fa
+> fallback a UPDATE sull'errore di vincolo (SQLSTATE classe 23). Quoting identificatori e
+> coercizione numerica gestiti per dialetto.
 
 ### Query (SQL raw)
 - **Execute Query** — esegue una SELECT. Output: **un item per record** (campi = colonne).

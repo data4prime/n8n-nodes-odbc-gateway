@@ -14,8 +14,10 @@ import {
 
 import {
 	buildDelete,
+	buildExists,
+	buildInsert,
 	buildSelect,
-	buildUpsert,
+	buildUpdate,
 	Dialect,
 	SortRule,
 	WhereCondition,
@@ -85,6 +87,20 @@ function gatewayErrorMessage(error: unknown): string | undefined {
 	if (typeof detail === 'string') return detail;
 	const sqlstate = detail.sqlstate ? ` [SQLSTATE ${detail.sqlstate}]` : '';
 	return `${detail.error ?? 'Errore del driver'}${sqlstate}`;
+}
+
+/** SQLSTATE dell'errore del gateway, se presente (es. '23505'). */
+function gatewaySqlState(error: unknown): string | undefined {
+	const anyErr = error as { response?: { body?: IDataObject }; cause?: { response?: { body?: IDataObject } } };
+	const body = anyErr?.response?.body ?? anyErr?.cause?.response?.body;
+	const detail = body?.detail as IDataObject | undefined;
+	const ss = detail?.sqlstate;
+	return typeof ss === 'string' ? ss : undefined;
+}
+
+/** True se l'errore è una violazione di vincolo di integrità (SQLSTATE classe 23). */
+function isUniqueViolation(error: unknown): boolean {
+	return (gatewaySqlState(error) ?? '').startsWith('23');
 }
 
 export class OdbcGateway implements INodeType {
@@ -732,20 +748,78 @@ export class OdbcGateway implements INodeType {
 								);
 							}
 						}
-						const built = buildUpsert(dialect, {
+						const matchValues = matchColumns.map((m) => values[columns.indexOf(m)]);
+						const setColumns = columns.filter((c) => !matchColumns.includes(c));
+						const setValues = setColumns.map((c) => values[columns.indexOf(c)]);
+
+						// 1) La riga con questa chiave esiste già?
+						const exists = buildExists(dialect, {
 							table,
 							schema,
-							columns,
-							values,
 							matchColumns,
+							matchValues,
 						});
-						const res = (await gatewayRequest(this, 'POST', '/query', {
+						const existsRes = (await gatewayRequest(this, 'POST', '/query', {
 							connection,
-							sql: built.sql,
-							params: built.params,
+							sql: exists.sql,
+							params: exists.params,
+							max_rows: 1,
 						})) as IDataObject;
+						const rowExists = ((existsRes.row_count as number) ?? 0) > 0;
+
+						const doUpdate = async (): Promise<IDataObject> => {
+							const upd = buildUpdate(dialect, {
+								table,
+								schema,
+								setColumns,
+								setValues,
+								matchColumns,
+								matchValues,
+							});
+							return (await gatewayRequest(this, 'POST', '/query', {
+								connection,
+								sql: upd.sql,
+								params: upd.params,
+							})) as IDataObject;
+						};
+
+						let action: string;
+						let writeRes: IDataObject;
+						if (rowExists) {
+							if (!setColumns.length) {
+								// Solo colonne chiave: niente da aggiornare.
+								action = 'skipped (no non-key columns to update)';
+								writeRes = { affected_rows: 0 };
+							} else {
+								action = 'updated';
+								writeRes = await doUpdate();
+							}
+						} else {
+							const ins = buildInsert(dialect, { table, schema, columns, values });
+							try {
+								writeRes = (await gatewayRequest(this, 'POST', '/query', {
+									connection,
+									sql: ins.sql,
+									params: ins.params,
+								})) as IDataObject;
+								action = 'inserted';
+							} catch (insErr) {
+								// Race SELECT→INSERT: la riga è comparsa nel frattempo → UPDATE.
+								if (isUniqueViolation(insErr) && setColumns.length) {
+									action = 'updated';
+									writeRes = await doUpdate();
+								} else {
+									throw insErr;
+								}
+							}
+						}
+
 						returnData.push({
-							json: { table, affected_rows: res.affected_rows ?? null },
+							json: {
+								table,
+								action,
+								affected_rows: writeRes.affected_rows ?? null,
+							},
 							pairedItem: { item: i },
 						});
 						continue;

@@ -140,79 +140,78 @@ export function buildDelete(dialect: Dialect, o: DeleteOptions): BuiltSql {
 	return { sql, params };
 }
 
-export interface UpsertOptions {
+// --- Upsert PORTABILE: SELECT sulla chiave, poi INSERT o UPDATE ---
+// Usa solo SELECT/INSERT/UPDATE → funziona su qualsiasi dialetto (niente MERGE/ON CONFLICT).
+// Nota: non è atomico (SELECT e write sono statement separati); le match columns
+// dovrebbero corrispondere a una chiave unica per una semantica corretta. La race
+// SELECT→INSERT è gestita dal nodo con fallback a UPDATE sull'errore di vincolo (SQLSTATE 23xxx).
+
+export interface KeyMatch {
 	table: string;
 	schema?: string;
 	catalog?: string;
-	columns: string[]; // nomi colonna, nell'ordine dei valori
-	values: unknown[]; // valori (stesso ordine)
-	matchColumns: string[]; // colonne chiave per il match
+	matchColumns: string[];
+	matchValues: unknown[];
 }
 
-export function buildUpsert(dialect: Dialect, o: UpsertOptions): BuiltSql {
-	const table = qualify(dialect, o.table, o.schema, o.catalog);
-	const cols = o.columns;
-	const match = o.matchColumns;
-	const qc = cols.map((c) => quoteIdent(dialect, c));
-	const placeholders = cols.map(() => '?').join(', ');
-	const updateCols = cols.filter((c) => !match.includes(c));
-	const params: unknown[] = [...o.values];
-
-	if (dialect === 'mysql') {
-		const upd = (updateCols.length ? updateCols : cols)
-			.map((c) => `${quoteIdent(dialect, c)}=VALUES(${quoteIdent(dialect, c)})`)
-			.join(', ');
-		return {
-			sql: `INSERT INTO ${table} (${qc.join(', ')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${upd}`,
-			params,
-		};
+/** SELECT per verificare se esiste già una riga con la chiave indicata. */
+export function buildExists(dialect: Dialect, o: KeyMatch): BuiltSql {
+	const where: WhereCondition[] = o.matchColumns.map((c, i) => ({
+		column: c,
+		operator: '=',
+		value: o.matchValues[i],
+	}));
+	const w = buildWhere(dialect, where, 'AND');
+	const firstCol = o.matchColumns.length ? quoteIdent(dialect, o.matchColumns[0]) : '*';
+	let sql = `SELECT ${firstCol} FROM ${qualify(dialect, o.table, o.schema, o.catalog)}`;
+	const params: unknown[] = [];
+	if (w.sql) {
+		sql += ` WHERE ${w.sql}`;
+		params.push(...w.params);
 	}
+	return { sql, params };
+}
 
-	if (dialect === 'postgres' || dialect === 'unknown') {
-		const conflict = match.map((c) => quoteIdent(dialect, c)).join(', ');
-		const action = updateCols.length
-			? `DO UPDATE SET ${updateCols
-					.map((c) => `${quoteIdent(dialect, c)}=EXCLUDED.${quoteIdent(dialect, c)}`)
-					.join(', ')}`
-			: 'DO NOTHING';
-		return {
-			sql: `INSERT INTO ${table} (${qc.join(', ')}) VALUES (${placeholders}) ON CONFLICT (${conflict}) ${action}`,
-			params,
-		};
-	}
+export interface InsertOptions {
+	table: string;
+	schema?: string;
+	catalog?: string;
+	columns: string[];
+	values: unknown[];
+}
 
-	// MERGE — sqlserver / oracle / db2i
-	const onClause = match
-		.map((c) => `T.${quoteIdent(dialect, c)} = S.${quoteIdent(dialect, c)}`)
-		.join(' AND ');
-	const insCols = qc.join(', ');
-	const insVals = cols.map((c) => `S.${quoteIdent(dialect, c)}`).join(', ');
-	const setClause = (updateCols.length ? updateCols : cols)
-		.map((c) => `T.${quoteIdent(dialect, c)} = S.${quoteIdent(dialect, c)}`)
-		.join(', ');
-
-	if (dialect === 'oracle') {
-		const using = `(SELECT ${cols
-			.map((c) => `? AS ${quoteIdent(dialect, c)}`)
-			.join(', ')} FROM dual)`;
-		return {
-			sql: `MERGE INTO ${table} T USING ${using} S ON (${onClause}) WHEN MATCHED THEN UPDATE SET ${setClause} WHEN NOT MATCHED THEN INSERT (${insCols}) VALUES (${insVals})`,
-			params,
-		};
-	}
-
-	if (dialect === 'db2i') {
-		const using = `(VALUES (${placeholders})) AS S (${qc.join(', ')})`;
-		return {
-			sql: `MERGE INTO ${table} AS T USING ${using} ON ${onClause} WHEN MATCHED THEN UPDATE SET ${setClause} WHEN NOT MATCHED THEN INSERT (${insCols}) VALUES (${insVals})`,
-			params,
-		};
-	}
-
-	// sqlserver
-	const using = `(SELECT ${cols.map((c) => `? AS ${quoteIdent(dialect, c)}`).join(', ')})`;
+export function buildInsert(dialect: Dialect, o: InsertOptions): BuiltSql {
+	const qc = o.columns.map((c) => quoteIdent(dialect, c)).join(', ');
+	const placeholders = o.columns.map(() => '?').join(', ');
 	return {
-		sql: `MERGE INTO ${table} AS T USING ${using} AS S ON ${onClause} WHEN MATCHED THEN UPDATE SET ${setClause} WHEN NOT MATCHED THEN INSERT (${insCols}) VALUES (${insVals});`,
-		params,
+		sql: `INSERT INTO ${qualify(dialect, o.table, o.schema, o.catalog)} (${qc}) VALUES (${placeholders})`,
+		params: o.values.map(coerce),
 	};
+}
+
+export interface UpdateOptions {
+	table: string;
+	schema?: string;
+	catalog?: string;
+	setColumns: string[];
+	setValues: unknown[];
+	matchColumns: string[];
+	matchValues: unknown[];
+}
+
+export function buildUpdate(dialect: Dialect, o: UpdateOptions): BuiltSql {
+	const set = o.setColumns.map((c) => `${quoteIdent(dialect, c)} = ?`).join(', ');
+	const where: WhereCondition[] = o.matchColumns.map((c, i) => ({
+		column: c,
+		operator: '=',
+		value: o.matchValues[i],
+	}));
+	const w = buildWhere(dialect, where, 'AND');
+	let sql = `UPDATE ${qualify(dialect, o.table, o.schema, o.catalog)} SET ${set}`;
+	const params: unknown[] = o.setValues.map(coerce);
+	if (w.sql) {
+		sql += ` WHERE ${w.sql}`;
+		params.push(...w.params);
+	}
+	return { sql, params };
 }
