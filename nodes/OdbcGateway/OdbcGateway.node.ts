@@ -208,6 +208,23 @@ export class OdbcGateway implements INodeType {
 				displayOptions: { show: { resource: ['query'] } },
 			},
 			{
+				displayName:
+					"Tip: enable Preview and click <b>Test step</b> to see the first 100 rows in the output panel.",
+				name: 'previewNotice',
+				type: 'notice',
+				default: '',
+				displayOptions: { show: { resource: ['query'], operation: ['executeQuery'] } },
+			},
+			{
+				displayName: 'Preview (Max 100 Rows)',
+				name: 'previewMode',
+				type: 'boolean',
+				default: false,
+				description:
+					'Whether to cap the result to 100 rows for a quick preview. Run the node (Test step) to see the output table.',
+				displayOptions: { show: { resource: ['query'], operation: ['executeQuery'] } },
+			},
+			{
 				displayName: 'Split Rows Into Items',
 				name: 'splitRows',
 				type: 'boolean',
@@ -319,7 +336,13 @@ export class OdbcGateway implements INodeType {
 						body.params = params;
 					}
 
-					if (options.maxRows !== undefined && Number(options.maxRows) > 0) {
+					const previewMode =
+						operation === 'executeQuery' &&
+						(this.getNodeParameter('previewMode', i, false) as boolean);
+					if (previewMode) {
+						// Preview: cap a 100 righe, ignora Max Rows.
+						body.max_rows = 100;
+					} else if (options.maxRows !== undefined && Number(options.maxRows) > 0) {
 						body.max_rows = Number(options.maxRows);
 					}
 
