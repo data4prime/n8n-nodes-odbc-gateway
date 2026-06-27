@@ -12,6 +12,15 @@ import {
 	NodeOperationError,
 } from 'n8n-workflow';
 
+import {
+	buildDelete,
+	buildSelect,
+	buildUpsert,
+	Dialect,
+	SortRule,
+	WhereCondition,
+} from './dialect';
+
 /** Chiamata HTTP autenticata verso il gateway (header X-API-Key dalla credenziale). */
 async function gatewayRequest(
 	ctx: IExecuteFunctions | ILoadOptionsFunctions,
@@ -40,6 +49,31 @@ function rowsToItems(response: IDataObject, itemIndex: number): INodeExecutionDa
 		});
 		return { json, pairedItem: { item: itemIndex } };
 	});
+}
+
+/** Restituisce i nomi delle colonne di una tabella dal gateway. */
+async function fetchColumns(
+	ctx: IExecuteFunctions | ILoadOptionsFunctions,
+	connection: string,
+	schema: string,
+	table: string,
+): Promise<IDataObject[]> {
+	const qs: string[] = [`table=${encodeURIComponent(table)}`];
+	if (schema) qs.push(`schema=${encodeURIComponent(schema)}`);
+	const endpoint = `/connections/${encodeURIComponent(connection)}/columns?${qs.join('&')}`;
+	const res = (await gatewayRequest(ctx, 'GET', endpoint)) as IDataObject;
+	return (res.columns as IDataObject[]) ?? [];
+}
+
+/** Risolve il dialetto di una connessione dall'elenco /connections. */
+async function fetchDialect(
+	ctx: IExecuteFunctions | ILoadOptionsFunctions,
+	connection: string,
+): Promise<Dialect> {
+	const res = await gatewayRequest(ctx, 'GET', '/connections');
+	const list = Array.isArray(res) ? (res as IDataObject[]) : [];
+	const found = list.find((c) => c.name === connection);
+	return ((found?.dialect as Dialect) ?? 'unknown') as Dialect;
 }
 
 /** Estrae messaggio/SQLSTATE da un errore del gateway (400 con { detail: { error, sqlstate } }). */
@@ -73,11 +107,292 @@ export class OdbcGateway implements INodeType {
 				type: 'options',
 				noDataExpression: true,
 				options: [
+					{ name: 'Table', value: 'table' },
 					{ name: 'Query', value: 'query' },
 					{ name: 'Connection', value: 'connection' },
 					{ name: 'System', value: 'system' },
 				],
-				default: 'query',
+				default: 'table',
+			},
+			// --- Operazioni: Table ---
+			{
+				displayName: 'Operation',
+				name: 'operation',
+				type: 'options',
+				noDataExpression: true,
+				displayOptions: { show: { resource: ['table'] } },
+				options: [
+					{
+						name: 'Select',
+						value: 'select',
+						action: 'Select rows from a table',
+						description: 'Read rows, choosing columns, filter, sort and limit from the UI',
+					},
+					{
+						name: 'Upsert',
+						value: 'upsert',
+						action: 'Insert or update rows',
+						description: 'Insert a row, or update it when the match columns already exist',
+					},
+					{
+						name: 'Delete',
+						value: 'delete',
+						action: 'Delete rows from a table',
+						description: 'Delete the rows matching the conditions set in the UI',
+					},
+				],
+				default: 'select',
+			},
+			// --- Campi comuni Table (connection / schema / table) ---
+			{
+				displayName: 'Connection Name or ID',
+				name: 'tableConnection',
+				type: 'options',
+				typeOptions: { loadOptionsMethod: 'getConnections' },
+				required: true,
+				default: '',
+				description:
+					'The preconfigured gateway connection to use. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+				displayOptions: { show: { resource: ['table'] } },
+			},
+			{
+				displayName: 'Schema Name or ID',
+				name: 'tableSchema',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'getSchemas',
+					loadOptionsDependsOn: ['tableConnection'],
+				},
+				default: '',
+				description:
+					'Schema that contains the table (e.g. "public", "dbo"). Leave empty to use the driver default. Choose from the list, or specify an ID using an expression.',
+				displayOptions: { show: { resource: ['table'] } },
+			},
+			{
+				displayName: 'Table Name or ID',
+				name: 'tableName',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'getTablesForSchema',
+					loadOptionsDependsOn: ['tableConnection', 'tableSchema'],
+				},
+				required: true,
+				default: '',
+				description:
+					'The table to operate on. Choose from the list, or specify a name using an expression.',
+				displayOptions: { show: { resource: ['table'] } },
+			},
+			// --- Select ---
+			{
+				displayName: 'Output Columns',
+				name: 'outputColumns',
+				type: 'multiOptions',
+				typeOptions: {
+					loadOptionsMethod: 'getColumns',
+					loadOptionsDependsOn: ['tableConnection', 'tableSchema', 'tableName'],
+				},
+				default: [],
+				description:
+					'Columns to return. Leave empty to return all columns (SELECT *). Choose from the list, or specify IDs using an expression.',
+				displayOptions: { show: { resource: ['table'], operation: ['select'] } },
+			},
+			// --- Where (Select + Delete) ---
+			{
+				displayName: 'Conditions (WHERE)',
+				name: 'whereConditions',
+				type: 'fixedCollection',
+				typeOptions: { multipleValues: true },
+				placeholder: 'Add condition',
+				default: {},
+				description:
+					'Filter rows. Conditions are combined with the operator set in "Combine Conditions". Values are sent as bound query parameters, so they are safe from SQL injection.',
+				displayOptions: { show: { resource: ['table'], operation: ['select', 'delete'] } },
+				options: [
+					{
+						displayName: 'Condition',
+						name: 'condition',
+						values: [
+							{
+								displayName: 'Column Name or ID',
+								name: 'column',
+								type: 'options',
+								typeOptions: {
+									loadOptionsMethod: 'getColumns',
+									loadOptionsDependsOn: ['tableConnection', 'tableSchema', 'tableName'],
+								},
+								default: '',
+								description:
+									'Column to filter on. Choose from the list, or specify an ID using an expression.',
+							},
+							{
+								displayName: 'Operator',
+								name: 'operator',
+								type: 'options',
+								default: '=',
+								description:
+									'Comparison operator. "Is Null"/"Is Not Null" ignore the value; "In" expects a comma-separated list.',
+								options: [
+									{ name: 'Equals', value: '=' },
+									{ name: 'Not Equals', value: '!=' },
+									{ name: 'Greater Than', value: '>' },
+									{ name: 'Greater Or Equal', value: '>=' },
+									{ name: 'Less Than', value: '<' },
+									{ name: 'Less Or Equal', value: '<=' },
+									{ name: 'Like', value: 'LIKE' },
+									{ name: 'In', value: 'IN' },
+									{ name: 'Is Null', value: 'IS NULL' },
+									{ name: 'Is Not Null', value: 'IS NOT NULL' },
+								],
+							},
+							{
+								displayName: 'Value',
+								name: 'value',
+								type: 'string',
+								default: '',
+								description:
+									'Value to compare against. For "Like" use % as wildcard; for "In" use a comma-separated list. Ignored for "Is Null"/"Is Not Null".',
+								displayOptions: { hide: { operator: ['IS NULL', 'IS NOT NULL'] } },
+							},
+						],
+					},
+				],
+			},
+			{
+				displayName: 'Combine Conditions',
+				name: 'whereCombine',
+				type: 'options',
+				default: 'AND',
+				description: 'How to join multiple WHERE conditions',
+				options: [
+					{ name: 'AND', value: 'AND' },
+					{ name: 'OR', value: 'OR' },
+				],
+				displayOptions: { show: { resource: ['table'], operation: ['select', 'delete'] } },
+			},
+			// --- Sort + Limit (Select) ---
+			{
+				displayName: 'Sort',
+				name: 'sort',
+				type: 'fixedCollection',
+				typeOptions: { multipleValues: true },
+				placeholder: 'Add sort rule',
+				default: {},
+				description: 'Order the result by one or more columns',
+				displayOptions: { show: { resource: ['table'], operation: ['select'] } },
+				options: [
+					{
+						displayName: 'Rule',
+						name: 'rule',
+						values: [
+							{
+								displayName: 'Column Name or ID',
+								name: 'column',
+								type: 'options',
+								typeOptions: {
+									loadOptionsMethod: 'getColumns',
+									loadOptionsDependsOn: ['tableConnection', 'tableSchema', 'tableName'],
+								},
+								default: '',
+								description:
+									'Column to sort by. Choose from the list, or specify an ID using an expression.',
+							},
+							{
+								displayName: 'Direction',
+								name: 'direction',
+								type: 'options',
+								default: 'ASC',
+								options: [
+									{ name: 'Ascending', value: 'ASC' },
+									{ name: 'Descending', value: 'DESC' },
+								],
+								description: 'Sort direction',
+							},
+						],
+					},
+				],
+			},
+			{
+				displayName: 'Return All',
+				name: 'returnAll',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to return all matching rows, or only up to a given limit',
+				displayOptions: { show: { resource: ['table'], operation: ['select'] } },
+			},
+			{
+				displayName: 'Limit',
+				name: 'limit',
+				type: 'number',
+				default: 50,
+				typeOptions: { minValue: 1 },
+				description: 'Max number of rows to return',
+				displayOptions: {
+					show: { resource: ['table'], operation: ['select'], returnAll: [false] },
+				},
+			},
+			// --- Delete safeguard ---
+			{
+				displayName: 'Delete All Rows',
+				name: 'deleteAll',
+				type: 'boolean',
+				default: false,
+				description:
+					'Whether to allow deleting every row when no conditions are set. Safeguard against accidental full-table deletes.',
+				displayOptions: { show: { resource: ['table'], operation: ['delete'] } },
+			},
+			// --- Upsert ---
+			{
+				displayName: 'Match Columns',
+				name: 'matchColumns',
+				type: 'multiOptions',
+				typeOptions: {
+					loadOptionsMethod: 'getColumns',
+					loadOptionsDependsOn: ['tableConnection', 'tableSchema', 'tableName'],
+				},
+				required: true,
+				default: [],
+				description:
+					'Key columns used to decide insert vs update: a row is updated when these match an existing row, otherwise inserted. Usually the primary key. Choose from the list, or specify IDs using an expression.',
+				displayOptions: { show: { resource: ['table'], operation: ['upsert'] } },
+			},
+			{
+				displayName: 'Values to Send',
+				name: 'upsertValues',
+				type: 'fixedCollection',
+				typeOptions: { multipleValues: true },
+				placeholder: 'Add column',
+				default: {},
+				description:
+					'Column/value pairs to insert or update. Include the match columns. Values are sent as bound query parameters.',
+				displayOptions: { show: { resource: ['table'], operation: ['upsert'] } },
+				options: [
+					{
+						displayName: 'Value',
+						name: 'value',
+						values: [
+							{
+								displayName: 'Column Name or ID',
+								name: 'column',
+								type: 'options',
+								typeOptions: {
+									loadOptionsMethod: 'getColumns',
+									loadOptionsDependsOn: ['tableConnection', 'tableSchema', 'tableName'],
+								},
+								default: '',
+								description:
+									'Target column. Choose from the list, or specify an ID using an expression.',
+							},
+							{
+								displayName: 'Value',
+								name: 'value',
+								type: 'string',
+								default: '',
+								description:
+									'Value to set. Use an expression to map data from the input item (e.g. {{ $json.name }}).',
+							},
+						],
+					},
+				],
 			},
 			// --- Operazioni: Query ---
 			{
@@ -270,6 +585,52 @@ export class OdbcGateway implements INodeType {
 					value: c.name as string,
 				}));
 			},
+
+			async getSchemas(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				const conn = this.getNodeParameter('tableConnection', '') as string;
+				if (!conn) return [];
+				const res = (await gatewayRequest(
+					this,
+					'GET',
+					`/connections/${encodeURIComponent(conn)}/tables?types=*`,
+				)) as IDataObject;
+				const tables = (res.tables as IDataObject[]) ?? [];
+				const schemas = Array.from(
+					new Set(tables.map((t) => t.schema).filter((s): s is string => !!s)),
+				).sort();
+				return schemas.map((s) => ({ name: s, value: s }));
+			},
+
+			async getTablesForSchema(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				const conn = this.getNodeParameter('tableConnection', '') as string;
+				if (!conn) return [];
+				const schema = this.getNodeParameter('tableSchema', '') as string;
+				const qs = schema ? `?schema=${encodeURIComponent(schema)}` : '';
+				const res = (await gatewayRequest(
+					this,
+					'GET',
+					`/connections/${encodeURIComponent(conn)}/tables${qs}`,
+				)) as IDataObject;
+				const tables = (res.tables as IDataObject[]) ?? [];
+				return tables
+					.map((t) => t.name as string)
+					.filter(Boolean)
+					.sort()
+					.map((n) => ({ name: n, value: n }));
+			},
+
+			async getColumns(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				const conn = this.getNodeParameter('tableConnection', '') as string;
+				const table = this.getNodeParameter('tableName', '') as string;
+				if (!conn || !table) return [];
+				const schema = this.getNodeParameter('tableSchema', '') as string;
+				const cols = await fetchColumns(this, conn, schema, table);
+				return cols.map((c) => ({
+					name: `${c.name}${c.primary_key ? ' (PK)' : ''}`,
+					value: c.name as string,
+					description: (c.type as string) ?? undefined,
+				}));
+			},
 		},
 	};
 
@@ -281,6 +642,116 @@ export class OdbcGateway implements INodeType {
 
 		for (let i = 0; i < items.length; i++) {
 			try {
+				if (resource === 'table') {
+					const connection = this.getNodeParameter('tableConnection', i) as string;
+					const schema = this.getNodeParameter('tableSchema', i, '') as string;
+					const table = this.getNodeParameter('tableName', i) as string;
+					const dialect = await fetchDialect(this, connection);
+
+					if (operation === 'select') {
+						const columns = this.getNodeParameter('outputColumns', i, []) as string[];
+						const where = this.getNodeParameter(
+							'whereConditions.condition',
+							i,
+							[],
+						) as WhereCondition[];
+						const combine = this.getNodeParameter('whereCombine', i, 'AND') as string;
+						const sort = this.getNodeParameter('sort.rule', i, []) as SortRule[];
+						const returnAll = this.getNodeParameter('returnAll', i, false) as boolean;
+						const built = buildSelect(dialect, { table, schema, columns, where, combine, sort });
+						const body: IDataObject = {
+							connection,
+							sql: built.sql,
+							params: built.params,
+						};
+						if (!returnAll) {
+							body.max_rows = this.getNodeParameter('limit', i, 50) as number;
+						}
+						const res = (await gatewayRequest(this, 'POST', '/query', body)) as IDataObject;
+						returnData.push(...rowsToItems(res, i));
+						continue;
+					}
+
+					if (operation === 'delete') {
+						const where = this.getNodeParameter(
+							'whereConditions.condition',
+							i,
+							[],
+						) as WhereCondition[];
+						const combine = this.getNodeParameter('whereCombine', i, 'AND') as string;
+						const deleteAll = this.getNodeParameter('deleteAll', i, false) as boolean;
+						const built = buildDelete(dialect, { table, schema, where, combine });
+						if (!built.sql.includes(' WHERE ') && !deleteAll) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'No conditions set. Enable "Delete All Rows" to delete every row in the table.',
+								{ itemIndex: i },
+							);
+						}
+						const res = (await gatewayRequest(this, 'POST', '/query', {
+							connection,
+							sql: built.sql,
+							params: built.params,
+						})) as IDataObject;
+						returnData.push({
+							json: { table, affected_rows: res.affected_rows ?? null },
+							pairedItem: { item: i },
+						});
+						continue;
+					}
+
+					if (operation === 'upsert') {
+						const matchColumns = this.getNodeParameter('matchColumns', i, []) as string[];
+						const valuesRaw = this.getNodeParameter('upsertValues.value', i, []) as Array<{
+							column: string;
+							value: unknown;
+						}>;
+						if (!matchColumns.length) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'Select at least one Match Column for the upsert.',
+								{ itemIndex: i },
+							);
+						}
+						const valuePairs = valuesRaw.filter((v) => v.column);
+						if (!valuePairs.length) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'Add at least one column in "Values to Send".',
+								{ itemIndex: i },
+							);
+						}
+						const columns = valuePairs.map((v) => v.column);
+						const values = valuePairs.map((v) => v.value);
+						for (const m of matchColumns) {
+							if (!columns.includes(m)) {
+								throw new NodeOperationError(
+									this.getNode(),
+									`Match column "${m}" must also be present in "Values to Send".`,
+									{ itemIndex: i },
+								);
+							}
+						}
+						const built = buildUpsert(dialect, {
+							table,
+							schema,
+							columns,
+							values,
+							matchColumns,
+						});
+						const res = (await gatewayRequest(this, 'POST', '/query', {
+							connection,
+							sql: built.sql,
+							params: built.params,
+						})) as IDataObject;
+						returnData.push({
+							json: { table, affected_rows: res.affected_rows ?? null },
+							pairedItem: { item: i },
+						});
+						continue;
+					}
+				}
+
 				if (resource === 'system' && operation === 'health') {
 					const res = (await gatewayRequest(this, 'GET', '/health')) as IDataObject;
 					returnData.push({ json: res, pairedItem: { item: i } });

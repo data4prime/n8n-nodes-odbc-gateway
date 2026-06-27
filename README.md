@@ -22,7 +22,20 @@ Il pulsante **Test** verifica le credenziali su `GET /health`.
 
 ## Operazioni
 
-### Query
+### Table (guidate da interfaccia)
+Connection / Schema / Table da dropdown (popolati dai metadati del gateway); l'SQL è
+costruito dal nodo per il dialetto della connessione, con valori sempre parametrizzati.
+
+- **Select** — *Output Columns* (vuoto = tutte), *Conditions (WHERE)* (colonna/operatore/valore,
+  combine AND/OR), *Sort*, *Return All*/*Limit*. Output: un item per riga.
+- **Upsert** — *Match Columns* (chiavi) + *Values to Send* (colonna/valore). Genera l'upsert del
+  dialetto: Postgres `ON CONFLICT`, MySQL `ON DUPLICATE KEY`, SQL Server/Oracle/Db2i `MERGE`.
+- **Delete** — *Conditions (WHERE)*; se nessuna condizione richiede il flag *Delete All Rows*.
+
+> Dialetti verificati live: **Postgres** e **SQL Server**. MySQL/Oracle/Db2i sono implementati
+> ma non ancora testati su DB reale.
+
+### Query (SQL raw)
 - **Execute Query** — esegue una SELECT. Output: **un item per record** (campi = colonne).
   Disattiva *Split Rows Into Items* per ottenere la risposta grezza (`columns`/`rows`/`row_count`).
 - **Execute Statement** — INSERT/UPDATE/DELETE/DDL. Output: `{ affected_rows, elapsed_ms }`.
