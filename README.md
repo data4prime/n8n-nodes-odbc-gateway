@@ -1,112 +1,109 @@
-# n8n-nodes-odbc-gateway
+# ODBC/JDBC Gateway — n8n community node
 
-An n8n community node to run SQL queries on **multiple RDBMS** (PostgreSQL, MySQL/MariaDB,
-SQL Server, Oracle, IBM i / Db2 for i) through the **API Gateway → ODBC/JDBC**.
+![ODBC/JDBC Gateway for n8n](https://raw.githubusercontent.com/data4prime/n8n-nodes-odbc-gateway/main/media/overview.png)
 
-It replaces the "HTTP Request + Code to split rows" pattern: the node calls the gateway, handles
-authentication, and returns **one item per record** with named fields.
+**Talk to every database from n8n — visually, securely, without writing SQL plumbing.**
 
-## Requirement: the API Gateway component
+This node lets your n8n workflows read and write data in **PostgreSQL, MySQL/MariaDB, SQL Server,
+Oracle and IBM i (Db2 for i)** through a single, consistent interface. Pick a connection, a table and
+the columns from dropdowns, add a few conditions, and you get clean results — **one item per row**,
+ready for the rest of your workflow. No more "HTTP Request + Code to parse rows".
 
-> **This node requires the companion "API Gateway → ODBC/JDBC" component to be deployed and reachable
-> from your n8n instance.** The node never connects to databases directly — it only calls the
-> gateway's REST endpoints (`/query`, `/connections`, `/tables`, `/columns`, `/health`). All database
-> drivers, connection configuration and credentials live in the gateway. **Without a running gateway
-> this node cannot operate.**
+---
 
-The gateway is a separate component. To obtain it or for deployment assistance, contact data4prime
-(see [Support](#support)).
+## Why you'll like it
 
-## Installation
+- **One node, every database.** The same Select / Upsert / Delete experience across all supported
+  engines — no dialect quirks to remember.
+- **Build queries visually.** Connection, schema, table and columns come from real dropdowns;
+  filters, sorting and limits are point-and-click. SQL is optional.
+- **Results that just work in n8n.** Each row becomes its own item with named fields, so you can map
+  it straight into the next step.
+- **Secure by design.** Database credentials never live in n8n — they stay in the gateway. Every
+  value you enter is sent as a bound parameter, so your queries are safe from injection.
+- **Full control when you need it.** Drop down to raw SQL for anything the visual builder doesn't
+  cover.
 
-In n8n: **Settings → Community Nodes → Install** → `n8n-nodes-odbc-gateway`
-(requires `N8N_COMMUNITY_PACKAGES_ENABLED=true` on the instance).
+> **Requires the API Gateway component.** This node talks to a companion **API Gateway → ODBC/JDBC**
+> over REST — that gateway is what actually connects to your databases. The node never connects to a
+> database directly, so a reachable gateway is required for it to work. To obtain the gateway or get
+> help deploying it, contact data4prime (see [Support](#support)).
 
-## Credentials — *ODBC/JDBC Gateway API*
+---
 
-| Field     | Default                              | Notes                                         |
-|-----------|--------------------------------------|-----------------------------------------------|
-| Base URL  | `http://host.docker.internal:8000`   | From n8n in Docker, use `host.docker.internal` |
-| API Key   | —                                    | Sent in the `X-API-Key` header                |
+## What you can do
 
-The **Test** button verifies the credentials against `GET /health`.
+### Select — read data, visually
 
-## Operations
+![Select operation](https://raw.githubusercontent.com/data4prime/n8n-nodes-odbc-gateway/main/media/table-select.png)
 
-### Table (interface-driven)
-Connection / Schema / Table are dropdowns (populated from the gateway metadata); the SQL is built by
-the node for the connection's dialect, with values always sent as bound parameters.
+Choose the **connection, schema and table** from dropdowns, then pick the **output columns**, add
+**WHERE conditions** (column · operator · value), an optional **sort** and a **limit**. Run the step
+and each row comes back as a separate item with named fields. Leave the columns empty to return
+everything.
 
-- **Select** — *Output Columns* (empty = all), *Conditions (WHERE)* (column/operator/value, combine
-  AND/OR), *Sort*, *Return All*/*Limit*. Output: one item per row.
-- **Upsert** — *Match Columns* (keys) + *Values to Send* (column/value). **Portable** strategy:
-  runs a SELECT on the match columns, then INSERT (if absent) or UPDATE (if present). Uses only
-  standard SQL → works on **any dialect**, with no dependency on `MERGE`/`ON CONFLICT`. The output
-  reports the action taken (`inserted` / `updated`).
-- **Delete** — *Conditions (WHERE)*; if no condition is set it requires the *Delete All Rows* flag.
+### Upsert — insert or update, the smart way
 
-> **Upsert — notes**: it is not atomic (SELECT and write are separate statements). The *Match Columns*
-> should map to a **unique key**; on a SELECT→INSERT race the node falls back to UPDATE on a
-> constraint-violation error (SQLSTATE class 23). Identifier quoting and numeric coercion are handled
-> per dialect.
+![How upsert decides](https://raw.githubusercontent.com/data4prime/n8n-nodes-odbc-gateway/main/media/upsert-logic.png)
 
-### Query (raw SQL)
-- **Execute Query** — runs a SELECT. Output: **one item per record** (fields = columns).
-  Disable *Split Rows Into Items* to get the raw response (`columns`/`rows`/`row_count`).
-  Enable *Preview* to cap the result at 100 rows for a quick look via the node's *Test step*.
-- **Execute Statement** — INSERT/UPDATE/DELETE/DDL. Output: `{ affected_rows, elapsed_ms }`.
+Pick the **match columns** (your key) and the **values to send**. The node checks whether a matching
+row already exists, then **updates it or inserts a new one** — and tells you which happened
+(`inserted` / `updated`). Because it uses only standard SQL, it behaves the same on every database,
+with no special syntax to configure.
 
-Fields: **Connection** (dropdown from `GET /connections`), **SQL**, and under *Options*
-**Parameters** (JSON array for `?` placeholders) and **Max Rows**.
+### Delete — remove rows safely
 
-### Connection
-- **List** — lists the configured connections (one item per connection).
-- **List Tables** — lists the database tables/views for a connection (one item per table).
-  Options: *Schema*, *Catalog*, *Types* (default `TABLE,VIEW`, `*` for all).
+Define the **conditions** for the rows to remove. As a safeguard against accidents, deleting an
+entire table requires you to explicitly turn on **Delete All Rows**.
 
-### System
-- **Health** — gateway status.
+### Run any SQL
 
-## Example
-Table → Select on `dbo.Customers` (connection `test_SQLServer`) returning the `CustomerCode` and
-`CustomerDescription` columns → N items, each `{ CustomerCode, CustomerDescription }`.
+Need something custom? The **Query** operations let you run any statement (with optional `?`
+parameters) and get the rows back as items, or get the number of affected rows for writes.
 
-## Development
+### Browse your data sources
 
-```bash
-npm install
-npm run build      # tsc + copy icons into dist/
-npm run lint       # community node lint
+List the **connections** available on the gateway, and list the **tables** of any connection — handy
+for discovery while you build a workflow.
+
+---
+
+## How it works
+
+```
+n8n workflow ──▶ ODBC/JDBC Gateway node ──REST (API key)──▶ Gateway ──▶ your databases
 ```
 
-Local testing with n8n in Docker: mount a host folder as `~/.n8n/custom` in the container and
-`npm link` the built package, or `npm pack` and install the tarball.
+- The node sends your request to the gateway over HTTPS, authenticated with an API key.
+- The **gateway** holds the connection definitions, the database drivers and the credentials — and
+  runs the query on the right engine.
+- Dropdowns (connections, tables, columns) are populated live from the gateway's metadata, so you
+  always pick from what really exists.
+- For Select/Upsert/Delete the node builds the SQL for you, quoting identifiers per database and
+  binding every value as a parameter.
 
-## Publishing (public npm)
+---
 
-### Manual
-```bash
-npm login
-npm version patch
-npm publish --access public
-```
+## Getting started
 
-### Automated (GitHub Actions)
-The `.github/workflows/publish.yml` workflow publishes to npm on every `vX.Y.Z` tag (it checks that
-the tag matches the `package.json` version).
+1. **Install the node.** In n8n: **Settings → Community Nodes → Install** and enter
+   `n8n-nodes-odbc-gateway`.
+2. **Add the credential.** Create an **ODBC/JDBC Gateway API** credential with the gateway's
+   **Base URL** (from n8n in Docker use `http://host.docker.internal:8000`) and the **API key**.
+   The **Test** button confirms the gateway is reachable.
+3. **Use the node.** Add **ODBC/JDBC Gateway** to your workflow, choose **Table → Select / Upsert /
+   Delete** (or **Query** for raw SQL), and pick your connection and table from the dropdowns.
 
-One-time prerequisite: add the **`NPM_TOKEN`** secret to the repo (Settings → Secrets and variables →
-Actions) with an npm **Automation token**.
+> The connections you see come from the gateway's configuration — ask your gateway administrator
+> which ones are available, or use the **Connection → List** operation to discover them.
 
-Release:
-```bash
-npm version patch          # creates the commit + vX.Y.Z tag
-git push --follow-tags     # pushing the tag triggers publishing
-```
+---
 
 ## Support
 
-For any needs, contact **data4prime** — [www.data4prime.com](https://www.data4prime.com).
+Built and maintained by **data4prime**. For the gateway component, deployment help, or anything else,
+get in touch: [www.data4prime.com](https://www.data4prime.com).
 
 ## License
+
 MIT

@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 540" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <rect x="1" y="1" width="1198" height="538" rx="22" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
+
+  <!-- node icon -->
+  <g transform="translate(60,48) scale(1.04)">
+    <rect x="2" y="2" width="96" height="96" rx="24" fill="#1e293b"/>
+    <path d="M24 78 L24 48 A26 26 0 0 1 76 48 L76 78 L64 78 L64 49 A14 14 0 0 0 36 49 L36 78 Z" fill="#ffffff"/>
+    <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M32 61 H56"/><path d="M49 55 L61 61 L49 67"/>
+    </g>
+  </g>
+
+  <text x="188" y="92" font-size="40" font-weight="700" fill="#0f172a">ODBC/JDBC Gateway</text>
+  <text x="190" y="130" font-size="20" fill="#475569">Query every database from n8n — through one secure gateway.</text>
+
+  <!-- works with -->
+  <text x="62" y="196" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1.5">WORKS WITH</text>
+  <g font-size="16" font-weight="600" fill="#1e40af">
+    <g><rect x="60" y="212" width="150" height="42" rx="21" fill="#eff6ff" stroke="#bfdbfe"/><text x="135" y="239" text-anchor="middle">PostgreSQL</text></g>
+    <g><rect x="224" y="212" width="184" height="42" rx="21" fill="#eff6ff" stroke="#bfdbfe"/><text x="316" y="239" text-anchor="middle">MySQL / MariaDB</text></g>
+    <g><rect x="422" y="212" width="140" height="42" rx="21" fill="#eff6ff" stroke="#bfdbfe"/><text x="492" y="239" text-anchor="middle">SQL Server</text></g>
+    <g><rect x="576" y="212" width="104" height="42" rx="21" fill="#eff6ff" stroke="#bfdbfe"/><text x="628" y="239" text-anchor="middle">Oracle</text></g>
+    <g><rect x="694" y="212" width="190" height="42" rx="21" fill="#eff6ff" stroke="#bfdbfe"/><text x="789" y="239" text-anchor="middle">IBM i (Db2 for i)</text></g>
+  </g>
+
+  <!-- capability cards -->
+  <g>
+    <g><rect x="60" y="298" width="258" height="150" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+      <text x="84" y="338" font-size="22" font-weight="700" fill="#2563eb">Select</text>
+      <text x="84" y="372" font-size="15" fill="#475569">Pick columns, filters,</text>
+      <text x="84" y="394" font-size="15" fill="#475569">sort &amp; limit — visually.</text>
+      <text x="84" y="424" font-size="15" fill="#475569">One item per row.</text></g>
+    <g><rect x="334" y="298" width="258" height="150" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+      <text x="358" y="338" font-size="22" font-weight="700" fill="#2563eb">Upsert</text>
+      <text x="358" y="372" font-size="15" fill="#475569">Insert or update by key.</text>
+      <text x="358" y="394" font-size="15" fill="#475569">Portable across every</text>
+      <text x="358" y="424" font-size="15" fill="#475569">SQL dialect.</text></g>
+    <g><rect x="608" y="298" width="258" height="150" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+      <text x="632" y="338" font-size="22" font-weight="700" fill="#2563eb">Delete</text>
+      <text x="632" y="372" font-size="15" fill="#475569">Remove rows by</text>
+      <text x="632" y="394" font-size="15" fill="#475569">condition, with a</text>
+      <text x="632" y="424" font-size="15" fill="#475569">full-table safety guard.</text></g>
+    <g><rect x="882" y="298" width="258" height="150" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+      <text x="906" y="338" font-size="22" font-weight="700" fill="#2563eb">Raw SQL</text>
+      <text x="906" y="372" font-size="15" fill="#475569">Run any statement</text>
+      <text x="906" y="394" font-size="15" fill="#475569">with bound parameters</text>
+      <text x="906" y="424" font-size="15" fill="#475569">when you need full control.</text></g>
+  </g>
+
+  <text x="600" y="500" text-anchor="middle" font-size="15" fill="#64748b">No DB credentials in n8n · values always parameterized · metadata-driven dropdowns</text>
+</svg>
