@@ -66,6 +66,12 @@ parameters) and get the rows back as items, or get the number of affected rows f
 List the **connections** available on the gateway, and list the **tables** of any connection — handy
 for discovery while you build a workflow.
 
+### Monitor activity
+
+Read the gateway's **call log** straight from a workflow (System → Get Logs), with date filters and
+filters by event, connection or outcome. Build alerts or dashboards on gateway activity **without
+shell access** to the machine where it runs.
+
 ---
 
 ## How it works

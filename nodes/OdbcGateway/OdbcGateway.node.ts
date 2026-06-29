@@ -510,11 +510,103 @@ export class OdbcGateway implements INodeType {
 					{
 						name: 'Health',
 						value: 'health',
-						action: 'Verifica lo stato del gateway',
-						description: 'Controlla che il gateway risponda',
+						action: 'Check the gateway status',
+						description: 'Check that the gateway responds',
+					},
+					{
+						name: 'Get Logs',
+						value: 'logs',
+						action: 'Read the gateway call log',
+						description: 'Read the structured call log (API + driver) with date filters — no server access needed',
 					},
 				],
 				default: 'health',
+			},
+			// --- System > Get Logs ---
+			{
+				displayName: 'From',
+				name: 'logFrom',
+				type: 'dateTime',
+				default: '',
+				description: 'Start of the time range (UTC). Leave empty for no lower bound.',
+				displayOptions: { show: { resource: ['system'], operation: ['logs'] } },
+			},
+			{
+				displayName: 'To',
+				name: 'logTo',
+				type: 'dateTime',
+				default: '',
+				description: 'End of the time range (UTC). Leave empty for no upper bound.',
+				displayOptions: { show: { resource: ['system'], operation: ['logs'] } },
+			},
+			{
+				displayName: 'Filters',
+				name: 'logFilters',
+				type: 'collection',
+				placeholder: 'Add filter',
+				default: {},
+				displayOptions: { show: { resource: ['system'], operation: ['logs'] } },
+				options: [
+					{
+						displayName: 'Event',
+						name: 'event',
+						type: 'options',
+						default: '',
+						description: 'Type of log entry to return',
+						options: [
+							{ name: 'Any', value: '' },
+							{ name: 'API Request', value: 'api_request' },
+							{ name: 'API Response', value: 'api_response' },
+							{ name: 'DB Execution', value: 'db_exec' },
+						],
+					},
+					{
+						displayName: 'Outcome',
+						name: 'outcome',
+						type: 'options',
+						default: '',
+						description: 'Filter DB executions by outcome',
+						options: [
+							{ name: 'Any', value: '' },
+							{ name: 'Ok', value: 'ok' },
+							{ name: 'Error', value: 'error' },
+						],
+					},
+					{
+						displayName: 'Connection',
+						name: 'connection',
+						type: 'string',
+						default: '',
+						description: 'Filter by connection name',
+					},
+					{
+						displayName: 'Search',
+						name: 'q',
+						type: 'string',
+						default: '',
+						description: 'Return only lines containing this substring',
+					},
+					{
+						displayName: 'Order',
+						name: 'order',
+						type: 'options',
+						default: 'desc',
+						description: 'Sort by timestamp',
+						options: [
+							{ name: 'Newest First', value: 'desc' },
+							{ name: 'Oldest First', value: 'asc' },
+						],
+					},
+				],
+			},
+			{
+				displayName: 'Limit',
+				name: 'logLimit',
+				type: 'number',
+				default: 200,
+				typeOptions: { minValue: 1, maxValue: 5000 },
+				description: 'Max number of log entries to return',
+				displayOptions: { show: { resource: ['system'], operation: ['logs'] } },
 			},
 			// --- Parametri comuni alle Query ---
 			{
@@ -829,6 +921,27 @@ export class OdbcGateway implements INodeType {
 				if (resource === 'system' && operation === 'health') {
 					const res = (await gatewayRequest(this, 'GET', '/health')) as IDataObject;
 					returnData.push({ json: res, pairedItem: { item: i } });
+					continue;
+				}
+
+				if (resource === 'system' && operation === 'logs') {
+					const from = this.getNodeParameter('logFrom', i, '') as string;
+					const to = this.getNodeParameter('logTo', i, '') as string;
+					const limit = this.getNodeParameter('logLimit', i, 200) as number;
+					const f = this.getNodeParameter('logFilters', i, {}) as IDataObject;
+					const qs: string[] = [`limit=${encodeURIComponent(String(limit))}`];
+					if (from) qs.push(`from=${encodeURIComponent(String(from))}`);
+					if (to) qs.push(`to=${encodeURIComponent(String(to))}`);
+					if (f.event) qs.push(`event=${encodeURIComponent(String(f.event))}`);
+					if (f.outcome) qs.push(`outcome=${encodeURIComponent(String(f.outcome))}`);
+					if (f.connection) qs.push(`connection=${encodeURIComponent(String(f.connection))}`);
+					if (f.q) qs.push(`q=${encodeURIComponent(String(f.q))}`);
+					if (f.order) qs.push(`order=${encodeURIComponent(String(f.order))}`);
+					const res = (await gatewayRequest(this, 'GET', `/logs?${qs.join('&')}`)) as IDataObject;
+					const logs = (res.logs as IDataObject[]) ?? [];
+					for (const entry of logs) {
+						returnData.push({ json: entry, pairedItem: { item: i } });
+					}
 					continue;
 				}
 
