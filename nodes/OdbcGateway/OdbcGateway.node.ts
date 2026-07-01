@@ -697,15 +697,14 @@ export class OdbcGateway implements INodeType {
 			async getSchemas(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const conn = this.getNodeParameter('tableConnection', '') as string;
 				if (!conn) return [];
+				// Endpoint dedicato: elenca gli schemi via metadata del driver (veloce),
+				// senza scandire tutte le tabelle. Esclude gli schemi di sistema.
 				const res = (await gatewayRequest(
 					this,
 					'GET',
-					`/connections/${encodeURIComponent(conn)}/tables?types=*`,
+					`/connections/${encodeURIComponent(conn)}/schemas`,
 				)) as IDataObject;
-				const tables = (res.tables as IDataObject[]) ?? [];
-				const schemas = Array.from(
-					new Set(tables.map((t) => t.schema).filter((s): s is string => !!s)),
-				).sort();
+				const schemas = (res.schemas as string[]) ?? [];
 				return schemas.map((s) => ({ name: s, value: s }));
 			},
 
@@ -713,11 +712,13 @@ export class OdbcGateway implements INodeType {
 				const conn = this.getNodeParameter('tableConnection', '') as string;
 				if (!conn) return [];
 				const schema = this.getNodeParameter('tableSchema', '') as string;
-				const qs = schema ? `?schema=${encodeURIComponent(schema)}` : '';
+				// Bounded: schema + limite lato server per evitare payload enormi / timeout.
+				const params = ['limit=1000'];
+				if (schema) params.push(`schema=${encodeURIComponent(schema)}`);
 				const res = (await gatewayRequest(
 					this,
 					'GET',
-					`/connections/${encodeURIComponent(conn)}/tables${qs}`,
+					`/connections/${encodeURIComponent(conn)}/tables?${params.join('&')}`,
 				)) as IDataObject;
 				const tables = (res.tables as IDataObject[]) ?? [];
 				return tables
