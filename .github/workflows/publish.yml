@@ -1,7 +1,9 @@
 name: Publish to npm
 
 # Pubblica il pacchetto su npm quando viene creato un tag vX.Y.Z.
-# Richiede il secret NPM_TOKEN (Automation token del registry npm).
+# Usa il Trusted Publishing (OIDC): nessun token: npm si fida di questo
+# workflow tramite l'autorizzazione configurata su npmjs.com
+# (pacchetto -> Settings -> Trusted Publisher). La provenance e' automatica.
 on:
   push:
     tags:
@@ -9,7 +11,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # consente la provenance npm
+  id-token: write # richiesto dall'OIDC/Trusted Publishing (+ provenance)
 
 jobs:
   publish:
@@ -23,6 +25,10 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+
+      # Il Trusted Publishing richiede npm >= 11.5.1 (Node 20 ne porta una piu' vecchia).
+      - name: Upgrade npm
+        run: npm install -g npm@latest
 
       # --ignore-scripts evita la compilazione nativa di isolated-vm
       # (dipendenza di n8n-workflow, serve solo per i tipi in fase di build).
@@ -40,7 +46,6 @@ jobs:
             exit 1
           fi
 
+      # Nessun NODE_AUTH_TOKEN: l'autenticazione avviene via OIDC.
       - name: Publish
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
