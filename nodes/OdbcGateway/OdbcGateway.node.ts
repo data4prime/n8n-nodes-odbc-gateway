@@ -13,6 +13,7 @@ import {
 } from 'n8n-workflow';
 
 import {
+	AggExpr,
 	buildDelete,
 	buildExists,
 	buildInsert,
@@ -209,6 +210,68 @@ export class OdbcGateway implements INodeType {
 				description: 'Columns to return. Leave empty to return all columns (SELECT *). Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				displayOptions: { show: { resource: ['table'], operation: ['select'] } },
 			},
+			// --- Aggregations (Select) ---
+			{
+				displayName: 'Aggregations',
+				name: 'aggregations',
+				type: 'fixedCollection',
+				typeOptions: { multipleValues: true },
+				placeholder: 'Add aggregation',
+				default: {},
+				description:
+					'Aggregate expressions added to the SELECT (COUNT, SUM, AVG, MIN, MAX). Combine with "Group By". Functions come from a fixed list and columns from the metadata, so the query stays injection-safe.',
+				displayOptions: { show: { resource: ['table'], operation: ['select'] } },
+				options: [
+					{
+						displayName: 'Aggregation',
+						name: 'aggregation',
+						values: [
+							{
+								displayName: 'Function',
+								name: 'func',
+								type: 'options',
+								default: 'count',
+								description: 'Aggregate function to apply',
+								options: [
+									{ name: 'Average', value: 'avg' },
+									{ name: 'Count', value: 'count' },
+									{ name: 'Count Distinct', value: 'countDistinct' },
+									{ name: 'Max', value: 'max' },
+									{ name: 'Min', value: 'min' },
+									{ name: 'Sum', value: 'sum' },
+								],
+							},
+							{
+								displayName: 'Count All Rows [COUNT(*)]',
+								name: 'countStar',
+								type: 'boolean',
+								default: false,
+								description: 'Whether to count all rows with COUNT(*) instead of a column',
+								displayOptions: { show: { func: ['count'] } },
+							},
+							{
+								displayName: 'Column Name or ID',
+								name: 'column',
+								type: 'options',
+								typeOptions: {
+									loadOptionsMethod: 'getColumns',
+									loadOptionsDependsOn: ['tableConnection', 'tableSchema', 'tableName'],
+								},
+								default: '',
+								description: 'Column the function is applied to (ignored when "Count All Rows" is on). Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+								displayOptions: { hide: { countStar: [true] } },
+							},
+							{
+								displayName: 'Alias',
+								name: 'alias',
+								type: 'string',
+								default: '',
+								description: 'Optional output name for this expression (e.g. "total"). Can also be used as an Order By target.',
+							},
+						],
+					},
+				],
+			},
 			// --- Where (Select + Delete) ---
 			{
 				displayName: 'Conditions (WHERE)',
@@ -281,6 +344,19 @@ export class OdbcGateway implements INodeType {
 				],
 				displayOptions: { show: { resource: ['table'], operation: ['select', 'delete'] } },
 			},
+			// --- Group By (Select) ---
+			{
+				displayName: 'Group By Column Names or IDs',
+				name: 'groupBy',
+				type: 'multiOptions',
+				typeOptions: {
+					loadOptionsMethod: 'getColumns',
+					loadOptionsDependsOn: ['tableConnection', 'tableSchema', 'tableName'],
+				},
+				default: [],
+				description: 'Columns to group by. Required when mixing plain output columns with aggregations: every plain column must be grouped. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
+				displayOptions: { show: { resource: ['table'], operation: ['select'] } },
+			},
 			// --- Sort + Limit (Select) ---
 			{
 				displayName: 'Sort',
@@ -317,6 +393,13 @@ export class OdbcGateway implements INodeType {
 									{ name: 'Descending', value: 'DESC' },
 								],
 								description: 'Sort direction',
+							},
+							{
+								displayName: 'Order By Aggregation Alias',
+								name: 'alias',
+								type: 'string',
+								default: '',
+								description: 'Optional: order by an aggregation alias instead of the column above (e.g. "total"). If set, it takes precedence over the column.',
 							},
 						],
 					},
@@ -751,6 +834,12 @@ export class OdbcGateway implements INodeType {
 
 					if (operation === 'select') {
 						const columns = this.getNodeParameter('outputColumns', i, []) as string[];
+						const aggregations = this.getNodeParameter(
+							'aggregations.aggregation',
+							i,
+							[],
+						) as AggExpr[];
+						const groupBy = this.getNodeParameter('groupBy', i, []) as string[];
 						const where = this.getNodeParameter(
 							'whereConditions.condition',
 							i,
@@ -758,8 +847,41 @@ export class OdbcGateway implements INodeType {
 						) as WhereCondition[];
 						const combine = this.getNodeParameter('whereCombine', i, 'AND') as string;
 						const sort = this.getNodeParameter('sort.rule', i, []) as SortRule[];
+						// Con aggregati, ogni colonna semplice in output deve stare in GROUP BY.
+						if (aggregations.length && columns.length) {
+							const missing = columns.filter((c) => !groupBy.includes(c));
+							if (missing.length) {
+								throw new NodeOperationError(
+									this.getNode(),
+									`With aggregations, every plain output column must be in "Group By". Missing: ${missing.join(', ')}.`,
+									{ itemIndex: i },
+								);
+							}
+						}
+						// L'alias usato nell'ordinamento deve corrispondere a un alias di aggregato definito.
+						const aggAliases = aggregations
+							.map((a) => a.alias)
+							.filter((x): x is string => !!x);
+						for (const s of sort) {
+							if (s.alias && !aggAliases.includes(s.alias)) {
+								throw new NodeOperationError(
+									this.getNode(),
+									`Order By alias "${s.alias}" does not match any aggregation alias.`,
+									{ itemIndex: i },
+								);
+							}
+						}
 						const returnAll = this.getNodeParameter('returnAll', i, false) as boolean;
-						const built = buildSelect(dialect, { table, schema, columns, where, combine, sort });
+						const built = buildSelect(dialect, {
+							table,
+							schema,
+							columns,
+							aggregations,
+							groupBy,
+							where,
+							combine,
+							sort,
+						});
 						const body: IDataObject = {
 							connection,
 							sql: built.sql,

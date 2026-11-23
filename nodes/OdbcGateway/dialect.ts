@@ -13,6 +13,8 @@ export interface WhereCondition {
 export interface SortRule {
 	column: string;
 	direction?: string;
+	// Se valorizzato, ordina per questo alias (di un aggregato) invece che per colonna.
+	alias?: string;
 }
 
 export interface BuiltSql {
@@ -114,21 +116,67 @@ export function buildWhere(
 	return { sql: parts.join(joiner), params };
 }
 
+// Espressione aggregata per la Select assistita. La funzione proviene da una
+// allowlist (mai interpolata grezza), colonna e alias sono quotati come identificatori.
+export interface AggExpr {
+	func: string;
+	column?: string;
+	countStar?: boolean;
+	alias?: string;
+}
+
+// Funzioni di aggregazione ammesse: il token della UI viene mappato al nome SQL.
+// countDistinct → COUNT(DISTINCT ...).
+const AGG_FUNC: Record<string, { sql: string; distinct?: boolean }> = {
+	count: { sql: 'COUNT' },
+	countdistinct: { sql: 'COUNT', distinct: true },
+	sum: { sql: 'SUM' },
+	avg: { sql: 'AVG' },
+	min: { sql: 'MIN' },
+	max: { sql: 'MAX' },
+};
+
+// Costruisce una singola espressione aggregata; ritorna null se la funzione non è
+// nell'allowlist o manca la colonna richiesta (verrà semplicemente ignorata).
+export function buildAggExpr(dialect: Dialect, a: AggExpr): string | null {
+	const key = String(a.func ?? '').toLowerCase();
+	const aliased = (base: string): string =>
+		a.alias ? `${base} AS ${quoteIdent(dialect, a.alias)}` : base;
+	if (a.countStar && (key === 'count' || key === '')) {
+		return aliased('COUNT(*)');
+	}
+	const fn = AGG_FUNC[key];
+	if (!fn) return null;
+	if (!a.column) return null;
+	const col = quoteIdent(dialect, a.column);
+	const inner = fn.distinct ? `DISTINCT ${col}` : col;
+	return aliased(`${fn.sql}(${inner})`);
+}
+
 export interface SelectOptions {
 	table: string;
 	schema?: string;
 	catalog?: string;
 	columns?: string[];
+	aggregations?: AggExpr[];
+	groupBy?: string[];
 	where?: WhereCondition[];
 	combine?: string;
 	sort?: SortRule[];
 }
 
 export function buildSelect(dialect: Dialect, o: SelectOptions): BuiltSql {
-	const cols =
-		o.columns && o.columns.length
-			? o.columns.map((c) => quoteIdent(dialect, c)).join(', ')
-			: '*';
+	const selectParts: string[] = [];
+	if (o.columns && o.columns.length) {
+		selectParts.push(...o.columns.map((c) => quoteIdent(dialect, c)));
+	}
+	if (o.aggregations && o.aggregations.length) {
+		for (const a of o.aggregations) {
+			const expr = buildAggExpr(dialect, a);
+			if (expr) selectParts.push(expr);
+		}
+	}
+	const cols = selectParts.length ? selectParts.join(', ') : '*';
 	let sql = `SELECT ${cols} FROM ${qualify(dialect, o.table, o.schema, o.catalog)}`;
 	const params: unknown[] = [];
 	const w = buildWhere(dialect, o.where || [], o.combine || 'AND');
@@ -136,15 +184,23 @@ export function buildSelect(dialect: Dialect, o: SelectOptions): BuiltSql {
 		sql += ` WHERE ${w.sql}`;
 		params.push(...w.params);
 	}
+	if (o.groupBy && o.groupBy.length) {
+		const g = o.groupBy
+			.filter((c) => c)
+			.map((c) => quoteIdent(dialect, c))
+			.join(', ');
+		if (g) sql += ` GROUP BY ${g}`;
+	}
 	if (o.sort && o.sort.length) {
 		const order = o.sort
-			.filter((s) => s.column)
-			.map(
-				(s) =>
-					`${quoteIdent(dialect, s.column)} ${
-						String(s.direction).toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
-					}`,
-			)
+			.filter((s) => s.column || s.alias)
+			.map((s) => {
+				const target = s.alias
+					? quoteIdent(dialect, s.alias)
+					: quoteIdent(dialect, s.column);
+				const dir = String(s.direction).toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+				return `${target} ${dir}`;
+			})
 			.join(', ');
 		if (order) sql += ` ORDER BY ${order}`;
 	}

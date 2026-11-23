@@ -42,6 +42,15 @@ Choose the **connection, schema and table** from dropdowns, then pick the **outp
 and each row comes back as a separate item with named fields. Leave the columns empty to return
 everything.
 
+**Aggregations & grouping.** Add **aggregations** (COUNT, COUNT(\*), COUNT DISTINCT, SUM, AVG, MIN,
+MAX) by picking a function and a column, with an optional **alias** — no SQL to type. Set **Group By**
+to one or more columns, and you can **Order By** an aggregation alias (e.g. `total`). The function
+list is fixed and the identifiers come from the metadata, so the query stays safe just like a plain
+Select.
+
+> Example — orders per customer: Output column `customer`, aggregation `Count` → `COUNT(*)` as
+> `orders`, Group By `customer`, Sort by the `orders` alias descending.
+
 ### Upsert — insert or update, the smart way
 
 ![How upsert decides](https://raw.githubusercontent.com/data4prime/n8n-nodes-odbc-gateway/main/media/upsert-logic.png)
