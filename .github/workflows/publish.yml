@@ -27,8 +27,10 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       # Il Trusted Publishing richiede npm >= 11.5.1 (Node 20 ne porta una piu' vecchia).
+      # npm@latest (12.x) richiede Node >= 22, quindi fissiamo la serie 11.x,
+      # compatibile con Node 20 e gia' con il supporto OIDC.
       - name: Upgrade npm
-        run: npm install -g npm@latest
+        run: npm install -g npm@11
 
       # --ignore-scripts evita la compilazione nativa di isolated-vm
       # (dipendenza di n8n-workflow, serve solo per i tipi in fase di build).
