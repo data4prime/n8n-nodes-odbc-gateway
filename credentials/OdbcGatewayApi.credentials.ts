@@ -10,6 +10,12 @@ export class OdbcGatewayApi implements ICredentialType {
 
 	displayName = 'ODBC/JDBC Gateway API';
 
+	// Community node: documentationUrl deve essere un URL HTTP completo
+	// (regola cred-class-field-documentation-url-not-http-url). La regola
+	// "miscased" vale solo per i nodi del repo principale e qui è un falso
+	// positivo (il suo autofix trasformerebbe l'URL in camelCase), perciò è
+	// disabilitata su questa riga.
+	// eslint-disable-next-line n8n-nodes-base/cred-class-field-documentation-url-miscased
 	documentationUrl = 'https://github.com/data4prime/n8n-nodes-odbc-gateway';
 
 	properties: INodeProperties[] = [

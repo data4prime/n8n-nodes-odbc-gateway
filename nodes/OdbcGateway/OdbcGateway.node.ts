@@ -145,10 +145,10 @@ export class OdbcGateway implements INodeType {
 						description: 'Read rows, choosing columns, filter, sort and limit from the UI',
 					},
 					{
-						name: 'Upsert',
+						name: 'Create or Update',
 						value: 'upsert',
 						action: 'Insert or update rows',
-						description: 'Insert a row, or update it when the match columns already exist',
+						description: 'Create a new record, or update the current one if it already exists (upsert)',
 					},
 					{
 						name: 'Delete',
@@ -180,8 +180,7 @@ export class OdbcGateway implements INodeType {
 					loadOptionsDependsOn: ['tableConnection'],
 				},
 				default: '',
-				description:
-					'Schema that contains the table (e.g. "public", "dbo"). Leave empty to use the driver default. Choose from the list, or specify an ID using an expression.',
+				description: 'Schema that contains the table (e.g. "public", "dbo"). Leave empty to use the driver default. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				displayOptions: { show: { resource: ['table'] } },
 			},
 			{
@@ -194,13 +193,12 @@ export class OdbcGateway implements INodeType {
 				},
 				required: true,
 				default: '',
-				description:
-					'The table to operate on. Choose from the list, or specify a name using an expression.',
+				description: 'The table to operate on. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				displayOptions: { show: { resource: ['table'] } },
 			},
 			// --- Select ---
 			{
-				displayName: 'Output Columns',
+				displayName: 'Output Column Names or IDs',
 				name: 'outputColumns',
 				type: 'multiOptions',
 				typeOptions: {
@@ -208,8 +206,7 @@ export class OdbcGateway implements INodeType {
 					loadOptionsDependsOn: ['tableConnection', 'tableSchema', 'tableName'],
 				},
 				default: [],
-				description:
-					'Columns to return. Leave empty to return all columns (SELECT *). Choose from the list, or specify IDs using an expression.',
+				description: 'Columns to return. Leave empty to return all columns (SELECT *). Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				displayOptions: { show: { resource: ['table'], operation: ['select'] } },
 			},
 			// --- Where (Select + Delete) ---
@@ -237,8 +234,7 @@ export class OdbcGateway implements INodeType {
 									loadOptionsDependsOn: ['tableConnection', 'tableSchema', 'tableName'],
 								},
 								default: '',
-								description:
-									'Column to filter on. Choose from the list, or specify an ID using an expression.',
+								description: 'Column to filter on. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 							},
 							{
 								displayName: 'Operator',
@@ -249,15 +245,15 @@ export class OdbcGateway implements INodeType {
 									'Comparison operator. "Is Null"/"Is Not Null" ignore the value; "In" expects a comma-separated list.',
 								options: [
 									{ name: 'Equals', value: 'eq' },
-									{ name: 'Not Equals', value: 'ne' },
-									{ name: 'Greater Than', value: 'gt' },
 									{ name: 'Greater Or Equal', value: 'ge' },
-									{ name: 'Less Than', value: 'lt' },
-									{ name: 'Less Or Equal', value: 'le' },
-									{ name: 'Like', value: 'like' },
+									{ name: 'Greater Than', value: 'gt' },
 									{ name: 'In', value: 'in' },
-									{ name: 'Is Null', value: 'isNull' },
 									{ name: 'Is Not Null', value: 'isNotNull' },
+									{ name: 'Is Null', value: 'isNull' },
+									{ name: 'Less Or Equal', value: 'le' },
+									{ name: 'Less Than', value: 'lt' },
+									{ name: 'Like', value: 'like' },
+									{ name: 'Not Equals', value: 'ne' },
 								],
 							},
 							{
@@ -309,8 +305,7 @@ export class OdbcGateway implements INodeType {
 									loadOptionsDependsOn: ['tableConnection', 'tableSchema', 'tableName'],
 								},
 								default: '',
-								description:
-									'Column to sort by. Choose from the list, or specify an ID using an expression.',
+								description: 'Column to sort by. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 							},
 							{
 								displayName: 'Direction',
@@ -332,7 +327,7 @@ export class OdbcGateway implements INodeType {
 				name: 'returnAll',
 				type: 'boolean',
 				default: false,
-				description: 'Whether to return all matching rows, or only up to a given limit',
+				description: 'Whether to return all results or only up to a given limit',
 				displayOptions: { show: { resource: ['table'], operation: ['select'] } },
 			},
 			{
@@ -341,7 +336,7 @@ export class OdbcGateway implements INodeType {
 				type: 'number',
 				default: 50,
 				typeOptions: { minValue: 1 },
-				description: 'Max number of rows to return',
+				description: 'Max number of results to return',
 				displayOptions: {
 					show: { resource: ['table'], operation: ['select'], returnAll: [false] },
 				},
@@ -358,7 +353,7 @@ export class OdbcGateway implements INodeType {
 			},
 			// --- Upsert ---
 			{
-				displayName: 'Match Columns',
+				displayName: 'Match Column Names or IDs',
 				name: 'matchColumns',
 				type: 'multiOptions',
 				typeOptions: {
@@ -367,8 +362,7 @@ export class OdbcGateway implements INodeType {
 				},
 				required: true,
 				default: [],
-				description:
-					'Key columns used to decide insert vs update: a row is updated when these match an existing row, otherwise inserted. Usually the primary key. Choose from the list, or specify IDs using an expression.',
+				description: 'Key columns used to decide insert vs update: a row is updated when these match an existing row, otherwise inserted. Usually the primary key. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				displayOptions: { show: { resource: ['table'], operation: ['upsert'] } },
 			},
 			{
@@ -395,16 +389,14 @@ export class OdbcGateway implements INodeType {
 									loadOptionsDependsOn: ['tableConnection', 'tableSchema', 'tableName'],
 								},
 								default: '',
-								description:
-									'Target column. Choose from the list, or specify an ID using an expression.',
+								description: 'Target column. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 							},
 							{
 								displayName: 'Value',
 								name: 'value',
 								type: 'string',
 								default: '',
-								description:
-									'Value to set. Use an expression to map data from the input item (e.g. {{ $json.name }}).',
+								description: 'Value to set. Supports expressions to map a value from the incoming item.',
 							},
 						],
 					},
@@ -495,7 +487,7 @@ export class OdbcGateway implements INodeType {
 						name: 'types',
 						type: 'string',
 						default: 'TABLE,VIEW',
-						description: "Comma-separated types (e.g. TABLE,VIEW). Use '*' for all",
+						description: 'Comma-separated types (e.g. TABLE,VIEW). Use \'*\' for all.',
 					},
 				],
 			},
@@ -548,6 +540,13 @@ export class OdbcGateway implements INodeType {
 				displayOptions: { show: { resource: ['system'], operation: ['logs'] } },
 				options: [
 					{
+						displayName: 'Connection',
+						name: 'connection',
+						type: 'string',
+						default: '',
+						description: 'Filter by connection name',
+					},
+					{
 						displayName: 'Event',
 						name: 'event',
 						type: 'options',
@@ -558,6 +557,17 @@ export class OdbcGateway implements INodeType {
 							{ name: 'API Request', value: 'api_request' },
 							{ name: 'API Response', value: 'api_response' },
 							{ name: 'DB Execution', value: 'db_exec' },
+						],
+					},
+					{
+						displayName: 'Order',
+						name: 'order',
+						type: 'options',
+						default: 'desc',
+						description: 'Sort by timestamp',
+						options: [
+							{ name: 'Newest First', value: 'desc' },
+							{ name: 'Oldest First', value: 'asc' },
 						],
 					},
 					{
@@ -573,29 +583,11 @@ export class OdbcGateway implements INodeType {
 						],
 					},
 					{
-						displayName: 'Connection',
-						name: 'connection',
-						type: 'string',
-						default: '',
-						description: 'Filter by connection name',
-					},
-					{
 						displayName: 'Search',
 						name: 'q',
 						type: 'string',
 						default: '',
 						description: 'Return only lines containing this substring',
-					},
-					{
-						displayName: 'Order',
-						name: 'order',
-						type: 'options',
-						default: 'desc',
-						description: 'Sort by timestamp',
-						options: [
-							{ name: 'Newest First', value: 'desc' },
-							{ name: 'Oldest First', value: 'asc' },
-						],
 					},
 				],
 			},
