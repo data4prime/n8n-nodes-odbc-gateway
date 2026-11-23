@@ -35,7 +35,7 @@ ready for the rest of your workflow. No more "HTTP Request + Code to parse rows"
 
 ### Select — read data, visually
 
-![Select operation](https://raw.githubusercontent.com/data4prime/n8n-nodes-odbc-gateway/main/media/table-select.png)
+![Select operation](https://raw.githubusercontent.com/data4prime/n8n-nodes-odbc-gateway/main/media/table-select.png?v=0.3.5)
 
 Choose the **connection, schema and table** from dropdowns, then pick the **output columns**, add
 **WHERE conditions** (column · operator · value), an optional **sort** and a **limit**. Run the step
