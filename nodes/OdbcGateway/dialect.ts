@@ -46,6 +46,36 @@ function coerce(value: unknown): unknown {
 	return value;
 }
 
+// Mappa i token dell'operatore (valori della dropdown + simboli SQL legacy/interni) al SQL.
+// I valori della dropdown NON devono iniziare con '=', altrimenti n8n li interpreta come
+// un'espressione e svuota il campo: per questo usiamo token simbolici (eq, ne, ...).
+const OPERATOR_SQL: Record<string, string> = {
+	eq: '=',
+	ne: '!=',
+	gt: '>',
+	ge: '>=',
+	lt: '<',
+	le: '<=',
+	like: 'LIKE',
+	in: 'IN',
+	isnull: 'IS NULL',
+	isnotnull: 'IS NOT NULL',
+	// simboli SQL grezzi (retrocompatibilità + chiamanti interni: buildExists/buildUpdate)
+	'=': '=',
+	'!=': '!=',
+	'<>': '!=',
+	'>': '>',
+	'>=': '>=',
+	'<': '<',
+	'<=': '<=',
+	'is null': 'IS NULL',
+	'is not null': 'IS NOT NULL',
+};
+
+function sqlOperator(raw: unknown): string {
+	return OPERATOR_SQL[String(raw ?? 'eq').toLowerCase()] ?? '=';
+}
+
 export function buildWhere(
 	dialect: Dialect,
 	conditions: WhereCondition[],
@@ -56,7 +86,7 @@ export function buildWhere(
 	for (const c of conditions) {
 		if (!c.column) continue;
 		const col = quoteIdent(dialect, c.column);
-		const op = (c.operator || '=').toUpperCase();
+		const op = sqlOperator(c.operator);
 		if (op === 'IS NULL') {
 			parts.push(`${col} IS NULL`);
 			continue;

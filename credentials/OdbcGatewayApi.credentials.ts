@@ -21,7 +21,7 @@ export class OdbcGatewayApi implements ICredentialType {
 			placeholder: 'http://host.docker.internal:8000',
 			required: true,
 			description:
-				"URL del gateway. Da un n8n in Docker usa host.docker.internal invece di localhost.",
+				'Gateway URL. From an n8n running in Docker use host.docker.internal instead of localhost.',
 		},
 		{
 			displayName: 'API Key',
@@ -30,7 +30,7 @@ export class OdbcGatewayApi implements ICredentialType {
 			typeOptions: { password: true },
 			default: '',
 			required: true,
-			description: "Valore inviato nell'header X-API-Key",
+			description: 'Value sent in the X-API-Key header',
 		},
 	];
 
